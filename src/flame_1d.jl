@@ -80,7 +80,7 @@ function residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f)
     m_cp_mass = similar(mT)
     m_cpk = similar(mY)
     m_h_mole = similar(mY)
-    m_wdot = similar(y[1:ns + 1, :])
+    m_wdot = similar(y[1:ns + 1, :]) * p[1]
 
     for i = 1:ng
         T = mT[i]
@@ -182,4 +182,9 @@ T_f = f.T[ind_f]
 
 Fv = residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f)
 
-Fy = ForwardDiff.jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f), yv)
+@time Fy = ForwardDiff.jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f), yv)
+@time Fp = ForwardDiff.jacobian(p -> residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f), p)
+
+dydp = Fy \ Fp
+
+sens = dydp[ns + 2, :]
