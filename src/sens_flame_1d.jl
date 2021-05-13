@@ -11,11 +11,11 @@ using PyCall
 using Plots
 using Test
 
-mech = "../mechanism/1S_CH4_MP1.yaml"
-reactants = "CH4:0.5, O2:1.0, N2:3.76"
+# mech = "../mechanism/1S_CH4_MP1.yaml"
+# reactants = "CH4:0.5, O2:1.0, N2:3.76"
 
-# mech = "../mechanism/h2o2.yaml"
-# reactants = "H2:2.0, O2:1.0, AR:3.76"
+mech = "../mechanism/h2o2.yaml"
+reactants = "H2:2.0, O2:1.0, AR:3.76"
 
 ## Call Cantera
 ct = pyimport("cantera");
@@ -55,6 +55,7 @@ T_f = f.T[ind_f];
 
 Fv = residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f);
 
+# TODO: use sparse Jacobian Matrix
 @time Fy = jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), yv);
 @time Fp = jacobian(p -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), p);
 
@@ -67,3 +68,19 @@ hcat(sens, ct_sens)
 @test sens ≈ ct_sens atol = 1.e-2
 
 cos = dot(sens ./ norm(sens), ct_sens ./ norm(ct_sens))
+
+# ticklabel = ct_gas.reaction_equations()
+# plt = bar(sens, orientation=:h, yticks=(1:nr, ticklabel), yflip=true, label="Arrhenius.jl");
+# bar!(plt, ct_sens, orientation=:h, yticks=(1:nr, ticklabel), yflip=true, label="Cantera")
+
+using StatsPlots
+plt = groupedbar([sens ct_sens], 
+                  group=repeat(["Arrhenius.jl", "Cantera"], inner=nr),
+                  bar_position=:dodge, 
+                  bar_width=0.6,
+                  lw=0,
+                  framestyle=:box,
+                #   orientation=:h,
+                  yflip=true,
+                  xticks=(1:nr))
+png(plt, "sens.png")
