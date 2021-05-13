@@ -13,9 +13,12 @@ function (cal_wdot::Wdot)(u, p)
     C = Y2C(gas, Y, ρ_mass)
     h_mole = get_H(gas, T, Y, X)
     S0 = get_S(gas, T, P, X)
-    # _p = reshape(p, nr, 3)
-    # kp = @. @views(exp(_p[:, 1] + _p[:, 2] * log(T) - _p[:, 3] * 4184.0 / R / T))
-    kp = exp.(p)
+    if length(p) > nr
+        _p = reshape(p, :, 3)
+        kp = @. @views(exp(_p[:, 1] + _p[:, 2] * log(T) - _p[:, 3] * 4184.0 / R / T))
+    else
+        kp = exp.(p)
+    end
     qdot = wdot_func(gas.reaction, T, C, S0, h_mole; get_qdot=true) .* kp
     return gas.reaction.vk * qdot
 end

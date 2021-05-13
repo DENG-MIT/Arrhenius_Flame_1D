@@ -22,9 +22,7 @@ ct = pyimport("cantera");
 ct_gas = ct.Solution(mech);
 
 # Simulation parameters
-p = ct.one_atm  # pressure [Pa]
-Tin = 300.0  # unburned gas temperature [K]
-ct_gas.TPX = Tin, p, reactants
+ct_gas.TPX = 300.0, ct.one_atm, reactants
 
 # Flame object
 width = 0.1;  # m
@@ -44,7 +42,7 @@ nr = gas.n_reactions
 include("flame_1d.jl")
 
 cal_wdot = Wdot(f.P);
-p = zeros(nr);
+p = zeros(nr * 1);
 z = f.grid;
 yall = vcat(f.Y, f.T');
 mdot0 = f.density[1] * f.velocity[1];
@@ -63,18 +61,18 @@ dydp = Fy \ Fp;
 
 sens = - @view(dydp[end, :]) ./ mdot0;
 
-hcat(sens, ct_sens)
+hcat(sens[1:nr], ct_sens)
 
-@test sens ≈ ct_sens atol = 1.e-2
+@test sens[1:nr] ≈ ct_sens atol = 1.e-2
 
-cos = dot(sens ./ norm(sens), ct_sens ./ norm(ct_sens))
+cos = dot(sens[1:nr] ./ norm(sens[1:nr]), ct_sens ./ norm(ct_sens))
 
 # ticklabel = ct_gas.reaction_equations()
 # plt = bar(sens, orientation=:h, yticks=(1:nr, ticklabel), yflip=true, label="Arrhenius.jl");
 # bar!(plt, ct_sens, orientation=:h, yticks=(1:nr, ticklabel), yflip=true, label="Cantera")
 
 using StatsPlots
-plt = groupedbar([sens ct_sens], 
+plt = groupedbar([sens[1:nr] ct_sens], 
                   group=repeat(["Arrhenius.jl", "Cantera"], inner=nr),
                   bar_position=:dodge, 
                   bar_width=0.6,
