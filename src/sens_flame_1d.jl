@@ -5,6 +5,7 @@ end
 using Arrhenius
 using LinearAlgebra
 using ForwardDiff
+using ForwardDiff:jacobian
 using SparseArrays
 using PyCall
 using Plots
@@ -45,22 +46,21 @@ include("flame_1d.jl")
 cal_wdot = Wdot(f.P)
 p = zeros(nr)
 z = f.grid
-ng = length(z)
-ny = ns + 1
 yall = vcat(f.Y, f.T')
-yv = vcat(reshape(yall, :, 1), f.density[1] * f.velocity[1])
-yL = vcat(f.Y[:, 1], f.T[1])
+mdot0 = f.density[1] * f.velocity[1]
+yv = vcat(reshape(yall, :, 1), mdot0)
+yL = vcat(@view(f.Y[:, 1]), f.T[1])
 ind_f = findfirst(f.T .> 1200.0)
 T_f = f.T[ind_f]
 
 Fv = residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f)
 
-@time Fy = ForwardDiff.jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), yv)
-@time Fp = ForwardDiff.jacobian(p -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), p)
+@time Fy = jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), yv)
+@time Fp = jacobian(p -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), p)
 
 dydp = Fy \ Fp
 
-sens = - dydp[end, :] ./ f.velocity[1] / f.density[1]
+sens = - @view(dydp[end, :]) ./ mdot0
 
 @show hcat(sens, ct_sens)
 

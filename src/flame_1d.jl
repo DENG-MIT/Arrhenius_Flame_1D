@@ -11,65 +11,32 @@ function (cal_wdot::Wdot)(u, p)
     ρ_mass = P / R / T * mean_MW
     X = Y2X(gas, Y, mean_MW)
     C = Y2C(gas, Y, ρ_mass)
-    cp_mole, cp_mass = get_cp(gas, T, X, mean_MW)
     h_mole = get_H(gas, T, Y, X)
     S0 = get_S(gas, T, P, X)
     # _p = reshape(p, nr, 3)
     # kp = @. @views(exp(_p[:, 1] + _p[:, 2] * log(T) - _p[:, 3] * 4184.0 / R / T))
     kp = exp.(p)
     qdot = wdot_func(gas.reaction, T, C, S0, h_mole; get_qdot=true) .* kp
-    wdot = gas.reaction.vk * qdot
-    return wdot
-end
-
-function dydz!(dy, z, y)
-    @. dy[1:end - 1] = (y[2:end] - y[1:end - 1]) / (z[2:end] - z[1:end - 1])
-    # dy[1] = (y[2] - y[1]) / (z[2] - z[1])
-end
-
-function dydzm!(dy, z, y)
-    @. dy[:, 1:end - 1] = (y[:, 2:end] - y[:, 1:end - 1]) / (z[2:end] - z[1:end - 1])'
-    # @. dy[:, 1] = (y[:, 2] - y[:, 1]) / (z[2] - z[1])
-end
-
-function dydz_central!(dy, z, y)
-
-    hj = z[3:end] - z[2:end - 1]
-    hjL = z[2:end - 1] - z[1:end - 2]
-    c1 = @. hjL / hj / (hj + hjL)
-    c2 = @. (hj - hjL) / hj / hjL
-    c3 = @. hj / hjL / (hj + hjL)
-    @. dy[2:end - 1] = c1 * y[3:end] + c2 * y[2:end - 1] - c3 * y[1:end - 2]
-
-    dy[1] = (y[2] - y[1]) / (z[2] - z[1])
-    dy[end] = (y[end] - y[end - 1]) / (z[end] - z[end - 1])
-end
-
-function dydzm_central!(dy, z, y)
-
-    hj = z[3:end] - z[2:end - 1]
-    hjL = z[2:end - 1] - z[1:end - 2]
-    c1 = @. hjL / hj / (hj + hjL)
-    c2 = @. (hj - hjL) / hj / hjL
-    c3 = @. hj / hjL / (hj + hjL)
-
-    @. dy[:, 2:end - 1] = c1' * y[:, 3:end] + c2' * y[:, 2:end - 1] - c3' * y[:, 1:end - 2]
-    
-    @. dy[:, 1] = (y[:, 2] - y[:, 1]) / (z[2] - z[1])
-    @. dy[:, end] = (y[:, end] - y[:, end - 1]) / (z[end] - z[end - 1])
+    return gas.reaction.vk * qdot
 end
 
 
 """
+gas: 
+cal_wdot:
 p: params
-grid: grid points
+z: grid points
+yv: 
 yL: left boundary conditions
+ind_f:
+T_f:
 Equation @ https://cantera.org/science/flames.html
+Cantera source code: https://github.com/Cantera/cantera/blob/be6e971dc6436dbc2bf86e56a41cab4b511a3dc3/src/oneD/StFlow.cpp
 """
 function residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f)
 
     ng = length(z)
-    y = reshape(@view(yv[1:end - 1]), ny, ng)
+    y = reshape(@view(yv[1:end - 1]), ns + 1, ng)
     mdot = yv[end]
 
     mY = @view(y[1:ns, :])
@@ -90,15 +57,14 @@ function residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f)
     mT_m = similar(mT)
     mY_m = similar(mY)
 
-    # m_ρ_m = similar(mT)
-    # m_X_m = similar(mY)
-    # m_mean_MW_m = similar(mT)
     m_Dkm_m = similar(mY)
     m_η_mix_m = similar(mT)
     m_λ_mix_m = similar(mT)
+    z_m = similar(z)
 
+    @. z_m[1:end - 1] = (z[2:end] + z[1:end - 1]) / 2.0
     @. mT_m[1:end - 1] = (mT[2:end] + mT[1:end - 1]) / 2.0
-    @. mY_m[:, 1:end - 1] = (mY[:, 2:end] + mY[:, 1:end - 1]) / 2.0
+    @. @view(mY_m[:, 1:end - 1]) = (@view(mY[:, 2:end]) + @view(mY[:, 1:end - 1])) / 2.0
 
     for i = 1:ng
         T = mT[i]
@@ -116,7 +82,7 @@ function residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f)
         m_mean_MW[i] = mean_MW
         m_u[i] = mdot / ρ_mass
 
-        cp_mole, cp_mass = get_cp(gas, T, X, mean_MW)
+        _, cp_mass = get_cp(gas, T, X, mean_MW)
         m_cp_mass[i] = cp_mass
         m_cpk[:, i] = cal_cpmass(gas, T, 0.0, X)
         m_h_mole[:, i] = get_H(gas, T, Y, X)
@@ -138,66 +104,55 @@ function residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f)
 
     # update_dYdx
     dXdz = similar(m_X)
-    # dydzm!(dXdz, z, m_X)
-    @. dXdz[:, 1:end - 1] = (m_X[:, 2:end] - m_X[:, 1:end - 1]) / (z[2:end] - z[1:end - 1])'
+    @. @view(dXdz[:, 1:end - 1]) = (@view(m_X[:, 2:end]) - @view(m_X[:, 1:end - 1])) / 
+                                   (@view(z[2:end]) - @view(z[1:end - 1]))'
 
     dYdz = similar(mY)
-    # dydzm!(dYdz, z, mY)
-    @. dYdz[:, 2:end] = (mY[:, 2:end] - mY[:, 1:end - 1]) / (z[2:end] - z[1:end - 1])'
+    @. @view(dYdz[:, 2:end]) = (@view(mY[:, 2:end]) - @view(mY[:, 1:end - 1])) / 
+                               (@view(z[2:end]) - @view(z[1:end - 1]))'
 
     # update_diffusive_fluxes
     Wk_W = gas.MW * (1 ./ m_mean_MW')
     jk_star = @. -m_ρ' * Wk_W * m_Dkm_m * dXdz
     jk = jk_star .- mY .* sum(jk_star, dims=1)
 
-    z_m = similar(z)
-    @. z_m[1:end - 1] = (z[2:end] + z[1:end - 1]) / 2.0
     djkdz = similar(jk)
-    @. djkdz[:, 2:end - 1] = (jk[:, 2:end - 1] - jk[:, 1:end - 2]) / (z_m[2:end - 1] - z_m[1:end - 2])'
-
-    # F1 = mdot .* dYdz
-    # F2 = djkdz
-    # F3 = - gas.MW .* m_wdot
-    # F = F1 + F2 + F3
-    # hcat(F1[:, ind_f], F2[:, ind_f], F3[:, ind_f], F[:, ind_f])
+    @. @view(djkdz[:, 2:end - 1]) = (@view(jk[:, 2:end - 1]) - @view(jk[:, 1:end - 2])) / 
+                                    (@view(z_m[2:end - 1]) - @view(z_m[1:end - 2]))'
 
     F_Y = mdot .* dYdz + djkdz - gas.MW .* m_wdot
 
-
     # update_dTdx
+    
+    Twdot = - sum(m_h_mole .* m_wdot, dims=1)'
+
     dTdz = similar(mT)
-    # dydz_central!(dTdz, z, mT)
     @. dTdz[2:end] = (mT[2:end] - mT[1:end - 1]) / (z[2:end] - z[1:end - 1])
 
-    divHeatFlux = similar(mT)
-    # dydz_central!(dTdz0, z, dTdz .* m_λ_mix_m)
     dTdz_div = similar(mT)
-    @. dTdz_div[1:end - 1] = (mT[2:end] - mT[1:end - 1]) / (z[2:end] - z[1:end - 1])
+    @. dTdz_div[1:end - 1] = (mT[2:end] - mT[1:end - 1]) / 
+                            (z[2:end] - z[1:end - 1])
+                            
     dTdz_div_λ = @. dTdz_div .* m_λ_mix_m
 
+    divHeatFlux = similar(mT)
     @. divHeatFlux[2:end - 1] = 2.0 * (dTdz_div_λ[2:end - 1] - dTdz_div_λ[1:end - 2]) / 
                                 (z[3:end] - z[1:end - 2])
 
     jk_m = similar(jk)
-    @. jk_m[:, 2:end - 1] = (jk[:, 2:end - 1] + jk[:, 1:end - 2]) / 2.0
-
-    # dTdz1 = dTdz0 - dTdz .* sum(jk_m .* m_cpk, dims=1)'
-    # dTdz2 = dTdz1 - sum(m_h_mole .* m_wdot, dims=1)'
-
-    Twdot = - sum(m_h_mole .* m_wdot, dims=1)'
+    @. @view(jk_m[:, 2:end - 1]) = (@view(jk[:, 2:end - 1]) + @view(jk[:, 1:end - 2])) / 2.0
     Tflux = - dTdz .* sum(jk_m .* m_cpk, dims=1)'
 
     Tconv = @. (mdot * m_cp_mass * dTdz)
+
     F_T = Twdot + divHeatFlux + Tflux - Tconv
-    hcat(Twdot, Tconv, Tflux, divHeatFlux, F_T)[ind_f, :]'
 
-    # boundary conditions
-    F_T[1] = mT[1] - yL[end]
-    F_T[end] = (mT[end] - mT[end - 1]) / (z[end] - z[end - 1])
-    # F_T[ind_f] = mT[ind_f] - T_f
-
+    # Boundary conditions
     F_Y[:, 1] = yL[1:end - 1] .- mY[:, 1] .- jk[:, 1] / mdot
     F_Y[:, end] = (mY[:, end] - mY[:, end - 1]) / (z[end] - z[end - 1])'
+
+    F_T[1] = mT[1] - yL[end]
+    F_T[end] = (mT[end] - mT[end - 1]) / (z[end] - z[end - 1])
 
     F = vcat(F_Y, F_T')
 
