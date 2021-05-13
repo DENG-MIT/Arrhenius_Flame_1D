@@ -10,11 +10,11 @@ using PyCall
 using Plots
 using Test
 
-mech = "../mechanism/1S_CH4_MP1.yaml"
-reactants = "CH4:0.5, O2:1.0, N2:3.76"
+# mech = "../mechanism/1S_CH4_MP1.yaml"
+# reactants = "CH4:0.5, O2:1.0, N2:3.76"
 
-# mech = "../mechanism/h2o2.yaml"
-# reactants = "H2:2.0, O2:1.0, AR:3.76"
+mech = "../mechanism/h2o2.yaml"
+reactants = "H2:2.0, O2:1.0, AR:3.76"
 
 ## Call Cantera
 ct = pyimport("cantera")
@@ -30,7 +30,7 @@ width = 0.1  # m
 f = ct.FreeFlame(ct_gas, width=width)
 f.set_refine_criteria(ratio=3, slope=0.1, curve=0.1, prune=0.005)
 
-f.solve(loglevel=8, auto=true)
+f.solve(loglevel=2, auto=true)
 f.velocity[1]
 
 ct_sens = f.get_flame_speed_reaction_sensitivities()
@@ -50,18 +50,20 @@ ny = ns + 1
 yall = vcat(f.Y, f.T')
 yv = vcat(reshape(yall, :, 1), f.density[1] * f.velocity[1])
 yL = vcat(f.Y[:, 1], f.T[1])
-ind_f = findfirst(f.T .> 900.0)
+ind_f = findfirst(f.T .> 1200.0)
 T_f = f.T[ind_f]
 
-Fv = residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f)
+Fv = residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f)
 
-@time Fy = ForwardDiff.jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f), yv)
-@time Fp = ForwardDiff.jacobian(p -> residual(gas, cal_wdot, p, z, yv, yL, ind_f, T_f), p)
+@time Fy = ForwardDiff.jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), yv)
+@time Fp = ForwardDiff.jacobian(p -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), p)
 
 dydp = Fy \ Fp
 
-sens = dydp[end, :] ./ f.velocity[1] / f.density[1]
+sens = - dydp[end, :] ./ f.velocity[1] / f.density[1]
 
 @show hcat(sens, ct_sens)
+
+@test sens ≈ ct_sens atol = 1.e-2
 
 cos = dot(sens ./ norm(sens), ct_sens ./ norm(ct_sens))
