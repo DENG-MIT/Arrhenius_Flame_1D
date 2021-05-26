@@ -48,7 +48,7 @@ f.grid
 r = ct.ElementaryReaction(Dict("CH4" => 1.0, "O2" => 2.0, "CO2" => 0.0), 
                           Dict("CO2" => 1.0, "H2O" => 2.0))
 r.reversible = false
-r.rate = ct.Arrhenius(1.1e+10 * (1e-3)^0.5, 0.0, 20000 * 1000 * 4.184)
+r.rate = ct.Arrhenius(1.1e+10 * (1e-3)^0.5 * 0.5, 0.0, 20000 * 1000 * 4.184)
 r.orders = Dict("CH4" => 1.0, "O2" => 0.5)
 
 gas2 = ct.Solution(thermo="IdealGas", kinetics="GasKinetics", 
@@ -59,7 +59,8 @@ gas2.TPX = Tin, p, reactants
 
 f2 = ct.FreeFlame(gas2, width=width)
 f2.set_refine_criteria(ratio=3, slope=0.07, curve=0.14, prune=0.01)
+f2.from_solution_array(fsol)
 
-f2.solve(loglevel=0, auto=true)
+f2.solve(loglevel=0, auto=false)
 f2.velocity[1]
 f2.show_stats()
