@@ -18,25 +18,25 @@ using Test
 using ProgressBars, Printf
 using Statistics
 
-mech = "../mechanism/2S_CH4_CM2.yaml"
-reactants = "CH4:0.5, O2:1.0, N2:3.76"
+# mech = "../mechanism/2S_CH4_CM2.yaml"
+# reactants = "CH4:0.5, O2:1.0, N2:3.76"
 
-# mech = "../mechanism/h2o2.yaml"
-# reactants = "H2:2.0, O2:1.0, AR:3.76"
+mech = "../mechanism/h2o2.yaml"
+reactants = "H2:2.0, O2:1.0, AR:3.76"
 
 gas = CreateSolution(mech);
 
 ns = gas.n_species
 nr = gas.n_reactions
-nr_crnn = 6
+nr_crnn = 10
 
 E_ = gas.ele_matrix;
 E_null = nullspace(E_)';
 nse = size(E_null)[1];
 
 function creat_flame(ct_gas, phi)
-    reactants = "CH4:$(phi * 0.5), O2:1.0, N2:3.76"
-    # reactants = "H2:$(phi * 2.0), O2:1.0, AR:3.76"
+    # reactants = "CH4:$(phi * 0.5), O2:1.0, N2:3.76"
+    reactants = "H2:$(phi * 2.0), O2:1.0, AR:3.76"
     ct_gas.TPX = 300.0, ct.one_atm, reactants
     f = ct.FreeFlame(ct_gas, width=width);
     return f
@@ -65,7 +65,7 @@ for i in 1:n_exp
     f = solve_flame(ct_gas, phi)
     l_fsol[phi] = f.to_solution_array()
     l_SL[i] = f.velocity[1]
-    @show i, phi, f.velocity[1]
+    @printf("%4d %.2f %.2e\n", i, phi, l_SL[i])
 end
 
 include("crnn_flame_1d.jl")
@@ -88,25 +88,15 @@ opt = ADAMW(0.01, (0.9, 0.999), 1.e-6);
 epochs = ProgressBar(1:100)
 for epoch in epochs
     global p
-
     l_epoch .= 1.0
     grad_norm .= 1.0
-
     for i in randperm(n_exp)
-
         phi = l_phi[i]
-
         sl, sens = cal_grad(phi, p)
-
         grad = 2 * (sl - l_SL[i]) * sens .* 1e4
-
         grad_norm[i] = norm(grad)
-
         update!(opt, p, grad)
-
         l_epoch[i] = (sl - l_SL[i])^2  .* 1e4
-
-        # @show phi, l_SL[i], sl, norm(grad)
         @printf("%4d %.2f %.2e %.2e %.2e \n", i, phi, l_SL[i], sl, norm(grad))
     end
     push!(l_loss, mean(l_epoch))
@@ -119,7 +109,6 @@ for epoch in epochs
             )
         ),
     )
-
     if epoch % 1 == 0
         plt = Plots.plot(l_loss)
         png(plt, "./loss.png")

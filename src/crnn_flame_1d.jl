@@ -44,7 +44,6 @@ function modify_gas(ct_gas, p)
     for i in 1:nr_crnn
         reactants = Dict()
         products = Dict()
-
         for j in 1:ns
             vks = vk[i, j]
             if vks < 0.0
@@ -72,14 +71,12 @@ function modify_gas(ct_gas, p)
 end
 
 EF = 30.0
-AF = 20.0
+AF = 15.0
 function p2vec(p)
     _p = reshape(p, :, nse + 2)
     vk = _p[:,1:nse] * E_null
-
     # vk[1, :] .= [-1.5, 2.0, -1.0, 1.0, 0, 0]
     # vk[2, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
-
     w_in_f = clamp.(-vk, 0, 2.5);
     w_in_b = clamp.(vk, 0, 2.5);
     w_in_E = _p[:, end - 1] .+ EF
@@ -98,26 +95,31 @@ end
 function init_p()
     p = randn(nr_crnn * (nse + 2))
     _p = reshape(p, :, nse + 2)
-
-    _p[:, 1] .= 1.0
-    _p[:, 2] .= -1.0
-
+    # H2 / H / O/ O2 / OH / H2O / HO2 / H2O2 / AR
+    vref = [-1.0, 0, 0, -0.5, 0, 1.0, 0, 0, 0]
+    for i in 1:nr_crnn
+        _p[i, 1:nse] .= (vref \ E_null')'  .* norm(vref)^2
+        
+        # if i > 2
+        #     _p[i, 1:nse] .+= randn(nse) .* 0.01
+        # end
+    end
     # _p[:, 1:end - 2] .*= 0.1
     # _p[:, end - 1] .+= 20.0
     # _p[:, end] .+= 20.0
     return vec(_p)
 end
 
-
 # p = init_p()
 # vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p);
 # ct_gasm = modify_gas(ct_gas, p)
 
-# nr_crnn = 6
-# p = init_p()
-# phi = 1.0
-# mgas = modify_gas(ct_gas, p)
-# f = solve_flame(mgas, phi)
+p = init_p();
+display_p(p)
+
+phi = 1.0
+mgas = modify_gas(ct_gas, p)
+f = solve_flame(mgas, phi)
 
 # plot(f.grid, f.T)
 
