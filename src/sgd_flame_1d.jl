@@ -55,7 +55,7 @@ ct_gas = ct.Solution(mech);
 width = 0.1;  # m
 
 n_exp = 10;
-span_phi = [0.8, 1.2];
+span_phi = [0.6, 1.5];
 l_phi = span_phi[1]:(span_phi[2] - span_phi[1]) / (n_exp - 1):span_phi[2]
 
 l_fsol = Dict()
@@ -74,18 +74,16 @@ include("crnn_flame_1d.jl")
 p = init_p()
 
 for i in 1:n_exp
-
     phi = l_phi[i]
     sl, sens = cal_grad(phi, p)
-
-    @show phi, l_SL[i], sl, sens
+    @printf("%4d %.2f %.2e %.2e %.2e \n", i, phi, l_SL[i], sl, norm(sens))
 end
-
-opt = ADAMW(0.1, (0.9, 0.999), 1.e-6);
 
 l_epoch = ones(n_exp);
 grad_norm = ones(n_exp);
 l_loss = []
+
+opt = ADAMW(0.01, (0.9, 0.999), 1.e-6);
 
 epochs = ProgressBar(1:100)
 for epoch in epochs
@@ -108,7 +106,8 @@ for epoch in epochs
 
         l_epoch[i] = (sl - l_SL[i])^2  .* 1e4
 
-        @show phi, l_SL[i], sl, norm(grad)
+        # @show phi, l_SL[i], sl, norm(grad)
+        @printf("%4d %.2f %.2e %.2e %.2e \n", i, phi, l_SL[i], sl, norm(grad))
     end
     push!(l_loss, mean(l_epoch))
 
@@ -121,8 +120,9 @@ for epoch in epochs
         ),
     )
 
-    if epoch % 5 == 0
+    if epoch % 1 == 0
         plt = Plots.plot(l_loss)
         png(plt, "./loss.png")
+        display_p(p)
     end
 end

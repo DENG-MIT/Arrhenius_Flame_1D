@@ -79,9 +79,6 @@ function p2vec(p)
 
     # vk[1, :] .= [-1.5, 2.0, -1.0, 1.0, 0, 0]
     # vk[2, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
-    # for i in nr:nr_crnn
-    #     vk[i, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
-    # end
 
     w_in_f = clamp.(-vk, 0, 2.5);
     w_in_b = clamp.(vk, 0, 2.5);
@@ -89,6 +86,15 @@ function p2vec(p)
     w_in_A = _p[:, end] .+ AF
     return vk, w_in_f, w_in_b, w_in_E, w_in_A
 end
+
+function display_p(p)
+    vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p)
+    println("\n species (col) reaction (row)")
+    println(gas.species_names)
+    show(stdout, "text/plain", round.(hcat(vk, w_in_E, w_in_A), digits=3))
+end
+# display_p(p)
+
 function init_p()
     p = randn(nr_crnn * (nse + 2))
     _p = reshape(p, :, nse + 2)
@@ -122,7 +128,6 @@ function cal_grad(phi, p)
     f = solve_flame(mgas, phi)
 
     cal_wdot = Wdot(f.P);
-    # p = zeros(nr * 3);
     z = f.grid;
     yall = vcat(f.Y, f.T');
     mdot0 = f.density[1] * f.velocity[1];
