@@ -11,11 +11,11 @@ using PyCall
 using Plots
 using Test
 
-# mech = "../mechanism/1S_CH4_MP1.yaml"
-# reactants = "CH4:0.5, O2:1.0, N2:3.76"
+mech = "../mechanism/1S_CH4_MP1.yaml"
+reactants = "CH4:0.5, O2:1.0, N2:3.76"
 
-mech = "../mechanism/h2o2.yaml"
-reactants = "H2:2.0, O2:1.0, AR:3.76"
+# mech = "../mechanism/h2o2.yaml"
+# reactants = "H2:2.0, O2:1.0, AR:3.76"
 
 ## Call Cantera
 ct = pyimport("cantera");

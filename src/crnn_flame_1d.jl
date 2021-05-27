@@ -13,33 +13,52 @@ function (cal_wdot::Wdot)(u, p)
     C = Y2C(gas, Y, ρ_mass)
     h_mole = get_H(gas, T, Y, X)
     S0 = get_S(gas, T, P, X)
-    if length(p) > nr
-        _p = reshape(p, :, 3)
-        kp = @. @views(exp(_p[:, 1] + _p[:, 2] * 0 * log(T) - _p[:, 3] * 4184.0 * 1000.0 / R / T))
-    else
-        kp = exp.(p)
-    end
-    qdot = wdot_func(gas.reaction, T, C, S0, h_mole; get_qdot=true) .* kp
-    return gas.reaction.vk * qdot
+
+    vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p)
+
+    _kf = @. exp(w_in_A - w_in_E * 1000.0 / R / T)
+
+    ΔS_R = vk' * S0 / R
+    ΔH_RT = vk' * h_mole / (R * T)
+    Keq =
+        @. exp(ΔS_R - ΔH_RT + log(one_atm / R / T) * sum(vk, dims=1)[1, :])
+    _kr = @. _kf / Keq
+
+    u_in = @. log(clamp(C, 1.e-20, Inf))
+
+    w_in_x_f = w_in_f' * u_in;
+    w_in_x_b = w_in_b' * u_in;
+
+    wdot = vk * @. (exp(w_in_x_f) * _kf - exp(w_in_x_b) * _kr);
+
+    return wdot
 end
 
 function modify_gas(ct_gas, p)
     
     list_r = []
 
-    _p = reshape(p, :, 3)
+    vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p)
 
-    for i in 1:nr
-        r = ct_gas.reaction(i - 1)
-        reactants = r.reactants
-        products = r.products
+    for i in 1:nr_crnn
+        reactants = Dict()
+        products = Dict()
 
-        A0 = r.rate.pre_exponential_factor
-        b0 = r.rate.temperature_exponent
-        E0 = r.rate.activation_energy  # J/kmol
+        for j in 1:ns
+            vks = vk[i, j]
+            if vks < 0.0
+                reactants[gas.species_names[j]] = -vks
+            else
+                products[gas.species_names[j]] = vks
+            end
+        end
+
+        A = exp(w_in_A[i])
+        b = 0.0
+        E = w_in_E[i] * 1000.0
 
         r1 = ct.ElementaryReaction(reactants, products)
-        r1.rate = ct.Arrhenius(A0 * exp(_p[i, 1]), b0, E0 + _p[i, 3] * 1000.0)
+        r1.rate = ct.Arrhenius(A, b, E)
 
         push!(list_r, r1)
     end
@@ -49,8 +68,37 @@ function modify_gas(ct_gas, p)
 
     return ct_gasm
 end
+
+function p2vec(p)
+    _p = reshape(p, :, nse + 2)
+    vk = _p[:,1:nse] * E_null
+
+    vk[1, :] .= [-1.5, 2.0, -1.0, 1.0, 0, 0]
+    vk[2, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
+
+    w_in_f = clamp.(-vk, 0, 2.5);
+    w_in_b = clamp.(vk, 0, 2.5);
+    w_in_E = _p[:, end - 1]
+    w_in_A = _p[:, end]
+    return vk, w_in_f, w_in_b, w_in_E, w_in_A
+end
+
+function init_p()
+    p = randn(nr_crnn * (nse + 2));
+    _p = reshape(p, :, nse + 2)
+    _p[:, 1:end - 2] .*= 0.1
+    _p[:, end - 1] .+= 10.0
+    _p[:, end] .+= 2.0
+    return reshape(_p, 1, :)
+end
+
+# p = init_p()
+# vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p);
 # ct_gasm = modify_gas(ct_gas, p)
 
+# phi = 1.0
+# mgas = modify_gas(ct_gas, p)
+# f = solve_flame(mgas, phi)
 
 function cal_grad(phi, p)
 
@@ -64,7 +112,13 @@ function cal_grad(phi, p)
     mdot0 = f.density[1] * f.velocity[1];
     yv = vcat(reshape(yall, :, 1), mdot0);
     yL = vcat(@view(f.Y[:, 1]), f.T[1]);
-    ind_f = findfirst(f.T .> 1200.0);
+
+    Tf = 900.0
+    if f.T[end] < Tf + 1.0
+        println("Warning: flame is not correct for phi = $phi maxT = $(f.T[end])")
+    end
+
+    ind_f = findfirst(f.T .> Tf);
     T_f = f.T[ind_f];
 
     Fy = jacobian(yv -> residual(gas, cal_wdot, p, z, yv, yL, ind_f; T_f=T_f), yv);
