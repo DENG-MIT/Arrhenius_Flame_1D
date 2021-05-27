@@ -16,20 +16,21 @@ function (cal_wdot::Wdot)(u, p)
 
     vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p)
 
-    _kf = @. exp(w_in_A - w_in_E * 1000.0 / R / T)
+    _kf = @. exp(w_in_A - w_in_E * 4184.0 * 1000.0 / R / T)
 
-    ΔS_R = vk' * S0 / R
-    ΔH_RT = vk' * h_mole / (R * T)
+    ΔS_R = vk * S0 / R
+    ΔH_RT = vk * h_mole / (R * T)
+    vkG = log(one_atm / R / T) .* sum(eachcol(vk))
     Keq =
-        @. exp(ΔS_R - ΔH_RT + log(one_atm / R / T) * sum(vk, dims=1)[1, :])
+        @. exp(ΔS_R - ΔH_RT + vkG)
     _kr = @. _kf / Keq
 
     u_in = @. log(clamp(C, 1.e-20, Inf))
 
-    w_in_x_f = w_in_f' * u_in;
-    w_in_x_b = w_in_b' * u_in;
+    w_in_x_f = w_in_f * u_in;
+    w_in_x_b = w_in_b * u_in;
 
-    wdot = vk * @. (exp(w_in_x_f) * _kf - exp(w_in_x_b) * _kr);
+    wdot = vk' * @. (exp(w_in_x_f) * _kf - exp(w_in_x_b) * _kr);
 
     return wdot
 end
@@ -55,10 +56,11 @@ function modify_gas(ct_gas, p)
 
         A = exp(w_in_A[i])
         b = 0.0
-        E = w_in_E[i] * 1000.0
+        E = w_in_E[i] * 4184.0 * 1000.0
 
         r1 = ct.ElementaryReaction(reactants, products)
         r1.rate = ct.Arrhenius(A, b, E)
+        # r1.reversible = false
 
         push!(list_r, r1)
     end
@@ -69,36 +71,50 @@ function modify_gas(ct_gas, p)
     return ct_gasm
 end
 
+EF = 30.0
+AF = 20.0
 function p2vec(p)
     _p = reshape(p, :, nse + 2)
     vk = _p[:,1:nse] * E_null
 
-    vk[1, :] .= [-1.5, 2.0, -1.0, 1.0, 0, 0]
-    vk[2, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
+    # vk[1, :] .= [-1.5, 2.0, -1.0, 1.0, 0, 0]
+    # vk[2, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
+    # for i in nr:nr_crnn
+    #     vk[i, :] .= [-0.5, 0.0, 0.0, -1.0, 1.0, 0]
+    # end
 
     w_in_f = clamp.(-vk, 0, 2.5);
     w_in_b = clamp.(vk, 0, 2.5);
-    w_in_E = _p[:, end - 1]
-    w_in_A = _p[:, end]
+    w_in_E = _p[:, end - 1] .+ EF
+    w_in_A = _p[:, end] .+ AF
     return vk, w_in_f, w_in_b, w_in_E, w_in_A
 end
-
 function init_p()
-    p = randn(nr_crnn * (nse + 2));
+    p = randn(nr_crnn * (nse + 2))
     _p = reshape(p, :, nse + 2)
-    _p[:, 1:end - 2] .*= 0.1
-    _p[:, end - 1] .+= 10.0
-    _p[:, end] .+= 2.0
-    return reshape(_p, 1, :)
+
+    _p[:, 1] .= 1.0
+    _p[:, 2] .= -1.0
+
+    # _p[:, 1:end - 2] .*= 0.1
+    # _p[:, end - 1] .+= 20.0
+    # _p[:, end] .+= 20.0
+    return vec(_p)
 end
+
 
 # p = init_p()
 # vk, w_in_f, w_in_b, w_in_E, w_in_A = p2vec(p);
 # ct_gasm = modify_gas(ct_gas, p)
 
+# nr_crnn = 6
+# p = init_p()
 # phi = 1.0
 # mgas = modify_gas(ct_gas, p)
 # f = solve_flame(mgas, phi)
+
+# plot(f.grid, f.T)
+
 
 function cal_grad(phi, p)
 
@@ -113,7 +129,7 @@ function cal_grad(phi, p)
     yv = vcat(reshape(yall, :, 1), mdot0);
     yL = vcat(@view(f.Y[:, 1]), f.T[1]);
 
-    Tf = 900.0
+    Tf = 1100.0
     if f.T[end] < Tf + 1.0
         println("Warning: flame is not correct for phi = $phi maxT = $(f.T[end])")
     end

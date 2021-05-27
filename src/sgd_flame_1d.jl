@@ -70,8 +70,6 @@ end
 
 include("crnn_flame_1d.jl")
 
-opt = ADAMW(1.e-3, (0.9, 0.999), 1.e-6);
-
 # p = randn(nr * 3) .* 0.1;
 p = init_p()
 
@@ -83,7 +81,7 @@ for i in 1:n_exp
     @show phi, l_SL[i], sl, sens
 end
 
-
+opt = ADAMW(0.1, (0.9, 0.999), 1.e-6);
 
 l_epoch = ones(n_exp);
 grad_norm = ones(n_exp);
@@ -110,7 +108,7 @@ for epoch in epochs
 
         l_epoch[i] = (sl - l_SL[i])^2  .* 1e4
 
-        # @show phi, l_SL[i], sl, norm(grad)
+        @show phi, l_SL[i], sl, norm(grad)
     end
     push!(l_loss, mean(l_epoch))
 
